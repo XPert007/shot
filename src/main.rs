@@ -1,13 +1,29 @@
 use nalgebra::Vector2;
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 use winit::{self, event};
+struct Coord {
+    x: i32,
+    y: i32,
+}
+
+struct Direction {
+    x: i32,
+    y: i32,
+}
+struct Ray {
+    origin: Vec<Coord>,
+    direction: Vec<Direction>,
+}
+
 #[derive(Default)]
 struct App {
     window: Option<Window>,
 }
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.window = Some(
@@ -27,7 +43,18 @@ impl ApplicationHandler for App {
                 println!("Close was requested");
             }
             WindowEvent::RedrawRequested => {
-                self.window.as_ref().unwrap().request_redraw();
+                println!("clicked");
+            }
+            WindowEvent::KeyboardInput {
+                device_id,
+                event,
+                is_synthetic,
+            } => {
+                if let PhysicalKey::Code(KeyCode::ArrowRight) = event.physical_key {
+                    if event.state.is_pressed() {
+                        self.window.as_ref().unwrap().request_redraw();
+                    }
+                }
             }
             _ => (),
         }
