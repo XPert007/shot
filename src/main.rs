@@ -5,23 +5,27 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::Window;
 use winit::{self, event};
+#[derive(Clone, Copy, Debug, Default)]
 struct Coord {
     x: i32,
     y: i32,
 }
-
-struct Direction {
-    x: i32,
-    y: i32,
-}
+#[derive(Default)]
 struct Ray {
-    origin: Vec<Coord>,
-    direction: Vec<Direction>,
+    position: Coord,
+    direction: Coord,
 }
 
+impl Ray {
+    fn move_step(&mut self) {
+        self.position.x += self.direction.x;
+        self.position.y += self.direction.y;
+    }
+}
 #[derive(Default)]
 struct App {
     window: Option<Window>,
+    ray: Ray,
 }
 
 impl ApplicationHandler for App {
