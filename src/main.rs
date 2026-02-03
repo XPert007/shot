@@ -1,31 +1,54 @@
-extern crate sdl2;
-
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::pixels::Color;
+use sdl2::pixels::PixelFormatEnum;
 use std::time::Duration;
 
-pub fn main() {
-    let sdl_context = sdl2::init().unwrap();
-    let video_subsystem = sdl_context.video().unwrap();
+const WIDTH: usize = 800;
+const HEIGHT: usize = 600;
 
-    let window = video_subsystem
-        .window("rust-sdl2 demo", 800, 600)
+fn main() -> Result<(), String> {
+    let sdl = sdl2::init()?;
+    let video = sdl.video()?;
+
+    let window = video
+        .window(
+            "SDL2 + pixels-style sim (RGBA)",
+            WIDTH as u32,
+            HEIGHT as u32,
+        )
         .position_centered()
         .build()
-        .unwrap();
+        .map_err(|e| e.to_string())?;
 
-    let mut canvas = window.into_canvas().build().unwrap();
+    // Use software canvas so there's no GPU shader/copy surprises
+    let mut canvas = window
+        .into_canvas()
+        .software()
+        .build()
+        .map_err(|e| e.to_string())?;
 
-    canvas.set_draw_color(Color::RGB(0, 255, 255));
-    canvas.clear();
-    canvas.present();
-    let mut event_pump = sdl_context.event_pump().unwrap();
-    let mut i = 0;
+    let texture_creator = canvas.texture_creator();
+    // Use RGBA8888 and write RGBA bytes into the texture
+    let mut texture = texture_creator
+        .create_texture_streaming(PixelFormatEnum::RGBA8888, WIDTH as u32, HEIGHT as u32)
+        .map_err(|e| e.to_string())?;
+
+    let mut event_pump = sdl.event_pump()?;
+
+    // CPU framebuffer: RGBA bytes per pixel
+    let mut buffer = vec![0u8; WIDTH * HEIGHT * 4];
+
+    // simple moving pixel state
+    let mut x: i32 = 100;
+    let mut y: i32 = 100;
+    let mut vx: i32 = 2;
+    let mut vy: i32 = 2;
+
+    // print a message so you know the app started
+    println!("Running. Press Escape or close the window to quit.");
+
     'running: loop {
-        i = (i + 1) % 255;
-        canvas.set_draw_color(Color::RGB(i, 64, 255 - i));
-        canvas.clear();
+        // --- events ---
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -36,10 +59,56 @@ pub fn main() {
                 _ => {}
             }
         }
-        // The rest of the game loop goes here...
 
+        // ---- simulation step ----
+        x += vx;
+        y += vy;
+
+        if x <= 0 || x >= WIDTH as i32 - 1 {
+            vx = -vx;
+        }
+        if y <= 0 || y >= HEIGHT as i32 - 1 {
+            vy = -vy;
+        }
+
+        // ---- clear framebuffer (black, fully opaque) ----
+        // RGBA = 0,0,0,255
+        for chunk in buffer.chunks_exact_mut(4) {
+            chunk[0] = 0; // R
+            chunk[1] = 0; // G
+            chunk[2] = 0; // B
+            chunk[3] = 255; // A
+        }
+
+        // ---- draw a white pixel at (x,y) ----
+        if x >= 0 && x < WIDTH as i32 && y >= 0 && y < HEIGHT as i32 {
+            let idx = (y as usize * WIDTH + x as usize) * 4;
+            buffer[idx + 0] = 255; // R
+            buffer[idx + 1] = 255; // G
+            buffer[idx + 2] = 255; // B
+            buffer[idx + 3] = 255; // A
+        }
+
+        // ---- upload pixels to texture using pitch-safe row copy ----
+        texture.with_lock(None, |tex_buf: &mut [u8], pitch: usize| {
+            // pitch is bytes per row in the texture
+            for row in 0..HEIGHT {
+                let src_start = row * WIDTH * 4;
+                let dst_start = row * pitch;
+                let src_slice = &buffer[src_start..src_start + WIDTH * 4];
+                let dst_slice = &mut tex_buf[dst_start..dst_start + WIDTH * 4];
+                dst_slice.copy_from_slice(src_slice);
+            }
+        })?;
+
+        // render to canvas
+        canvas.clear();
+        canvas.copy(&texture, None, None)?;
         canvas.present();
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
-    }
-}
 
+        // sleep ~60fps
+        std::thread::sleep(Duration::from_millis(16));
+    }
+
+    Ok(())
+}
