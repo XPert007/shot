@@ -1,155 +1,45 @@
-#![deny(clippy::all)]
-#![forbid(unsafe_code)]
+extern crate sdl2;
 
-use std::sync::Arc;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::pixels::Color;
+use std::time::Duration;
 
-use error_iter::ErrorIter as _;
-use log::error;
-use pixels::{Error, Pixels, SurfaceTexture};
-use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::EventLoop;
-use winit::keyboard::KeyCode;
-use winit::window::Window;
-use winit_input_helper::WinitInputHelper;
+pub fn main() {
+    let sdl_context = sdl2::init().unwrap();
+    let video_subsystem = sdl_context.video().unwrap();
 
-const WIDTH: u32 = 320;
-const HEIGHT: u32 = 240;
-const BOX_SIZE: i16 = 64;
+    let window = video_subsystem
+        .window("rust-sdl2 demo", 800, 600)
+        .position_centered()
+        .build()
+        .unwrap();
 
-/// Representation of the application state. In this example, a box will bounce around the screen.
-struct World {
-    box_x: i16,
-    box_y: i16,
-    velocity_x: i16,
-    velocity_y: i16,
-}
+    let mut canvas = window.into_canvas().build().unwrap();
 
-fn main() -> Result<(), Error> {
-    env_logger::init();
-    let event_loop = EventLoop::new().unwrap();
-    let mut input = WinitInputHelper::new();
-    let window = {
-        let size = LogicalSize::new(WIDTH as f64, HEIGHT as f64);
-        #[allow(deprecated)]
-        Arc::new(
-            event_loop
-                .create_window(
-                    Window::default_attributes()
-                        .with_title("Hello Pixels")
-                        .with_inner_size(size)
-                        .with_min_inner_size(size),
-                )
-                .unwrap(),
-        )
-    };
-
-    let mut pixels = {
-        let window_size = window.inner_size();
-        let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
-        Pixels::new(WIDTH, HEIGHT, surface_texture)?
-    };
-    let mut world = World::new();
-
-    #[allow(deprecated)]
-    let res = event_loop.run(|event, elwt| {
-        match event {
-            Event::Resumed => {}
-            Event::NewEvents(_) => input.step(),
-            Event::AboutToWait => input.end_step(),
-            Event::DeviceEvent { event, .. } => {
-                input.process_device_event(&event);
+    canvas.set_draw_color(Color::RGB(0, 255, 255));
+    canvas.clear();
+    canvas.present();
+    let mut event_pump = sdl_context.event_pump().unwrap();
+    let mut i = 0;
+    'running: loop {
+        i = (i + 1) % 255;
+        canvas.set_draw_color(Color::RGB(i, 64, 255 - i));
+        canvas.clear();
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. }
+                | Event::KeyDown {
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } => break 'running,
+                _ => {}
             }
-            Event::WindowEvent { event, .. } => {
-                // Draw the current frame
-                if event == WindowEvent::RedrawRequested {
-                    world.draw(pixels.frame_mut());
-                    if let Err(err) = pixels.render() {
-                        log_error("pixels.render", err);
-                        elwt.exit();
-                        return;
-                    }
-                }
-
-                // Handle input events
-                if input.process_window_event(&event) {
-                    // Close events
-                    if input.key_pressed(KeyCode::Escape) || input.close_requested() {
-                        elwt.exit();
-                        return;
-                    }
-
-                    // Resize the window
-                    if let Some(size) = input.window_resized() {
-                        if let Err(err) = pixels.resize_surface(size.width, size.height) {
-                            log_error("pixels.resize_surface", err);
-                            elwt.exit();
-                            return;
-                        }
-                    }
-
-                    // Update internal state and request a redraw
-                    world.update();
-                    window.request_redraw();
-                }
-            }
-            _ => {}
         }
-    });
-    res.map_err(|e| Error::UserDefined(Box::new(e)))
-}
+        // The rest of the game loop goes here...
 
-fn log_error<E: std::error::Error + 'static>(method_name: &str, err: E) {
-    error!("{method_name}() failed: {err}");
-    for source in err.sources().skip(1) {
-        error!("  Caused by: {source}");
+        canvas.present();
+        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
 }
 
-impl World {
-    /// Create a new `World` instance that can draw a moving box.
-    fn new() -> Self {
-        Self {
-            box_x: 24,
-            box_y: 16,
-            velocity_x: 1,
-            velocity_y: 1,
-        }
-    }
-
-    /// Update the `World` internal state; bounce the box around the screen.
-    fn update(&mut self) {
-        if self.box_x <= 0 || self.box_x + BOX_SIZE > WIDTH as i16 {
-            self.velocity_x *= -1;
-        }
-        if self.box_y <= 0 || self.box_y + BOX_SIZE > HEIGHT as i16 {
-            self.velocity_y *= -1;
-        }
-
-        self.box_x += self.velocity_x;
-        self.box_y += self.velocity_y;
-    }
-
-    /// Draw the `World` state to the frame buffer.
-    ///
-    /// Assumes the default texture format: `wgpu::TextureFormat::Rgba8UnormSrgb`
-    fn draw(&self, frame: &mut [u8]) {
-        for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-            let x = (i % WIDTH as usize) as i16;
-            let y = (i / WIDTH as usize) as i16;
-
-            let inside_the_box = x >= self.box_x
-                && x < self.box_x + BOX_SIZE
-                && y >= self.box_y
-                && y < self.box_y + BOX_SIZE;
-
-            let rgba = if inside_the_box {
-                [0x5e, 0x48, 0xe8, 0xff]
-            } else {
-                [0x48, 0xb2, 0xe8, 0xff]
-            };
-
-            pixel.copy_from_slice(&rgba);
-        }
-    }
-}
