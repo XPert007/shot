@@ -20,7 +20,6 @@ fn main() -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    // Use software canvas so there's no GPU shader/copy surprises
     let mut canvas = window
         .into_canvas()
         .software()
@@ -28,27 +27,22 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     let texture_creator = canvas.texture_creator();
-    // Use RGBA8888 and write RGBA bytes into the texture
     let mut texture = texture_creator
         .create_texture_streaming(PixelFormatEnum::RGBA8888, WIDTH as u32, HEIGHT as u32)
         .map_err(|e| e.to_string())?;
 
     let mut event_pump = sdl.event_pump()?;
 
-    // CPU framebuffer: RGBA bytes per pixel
     let mut buffer = vec![0u8; WIDTH * HEIGHT * 4];
 
-    // simple moving pixel state
     let mut x: i32 = 100;
     let mut y: i32 = 100;
     let mut vx: i32 = 2;
     let mut vy: i32 = 2;
 
-    // print a message so you know the app started
     println!("Running. Press Escape or close the window to quit.");
 
     'running: loop {
-        // --- events ---
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { .. }
@@ -60,7 +54,6 @@ fn main() -> Result<(), String> {
             }
         }
 
-        // ---- simulation step ----
         x += vx;
         y += vy;
 
@@ -71,8 +64,6 @@ fn main() -> Result<(), String> {
             vy = -vy;
         }
 
-        // ---- clear framebuffer (black, fully opaque) ----
-        // RGBA = 0,0,0,255
         for chunk in buffer.chunks_exact_mut(4) {
             chunk[0] = 0; // R
             chunk[1] = 0; // G
@@ -80,7 +71,6 @@ fn main() -> Result<(), String> {
             chunk[3] = 255; // A
         }
 
-        // ---- draw a white pixel at (x,y) ----
         if x >= 0 && x < WIDTH as i32 && y >= 0 && y < HEIGHT as i32 {
             let idx = (y as usize * WIDTH + x as usize) * 4;
             buffer[idx + 0] = 255; // R
@@ -89,9 +79,7 @@ fn main() -> Result<(), String> {
             buffer[idx + 3] = 255; // A
         }
 
-        // ---- upload pixels to texture using pitch-safe row copy ----
         texture.with_lock(None, |tex_buf: &mut [u8], pitch: usize| {
-            // pitch is bytes per row in the texture
             for row in 0..HEIGHT {
                 let src_start = row * WIDTH * 4;
                 let dst_start = row * pitch;
@@ -101,12 +89,10 @@ fn main() -> Result<(), String> {
             }
         })?;
 
-        // render to canvas
         canvas.clear();
         canvas.copy(&texture, None, None)?;
         canvas.present();
 
-        // sleep ~60fps
         std::thread::sleep(Duration::from_millis(16));
     }
 
