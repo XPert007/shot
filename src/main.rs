@@ -43,7 +43,11 @@ async fn main() {
     let ball_handle = rigid_body_set.insert(ball_body);
 
     let ball_collider = ColliderBuilder::ball(radius_m).restitution(0.7).build();
-
+    let ball_body2 =
+        RigidBodyBuilder::dynamic().translation(vector![screen_width() / 2.0 / M_TO_PX, 1.0]);
+    let ball_handle2 = rigid_body_set.insert(ball_body2);
+    let ball_collider2 = ColliderBuilder::ball(radius_m).restitution(0.7).build();
+    collider_set.insert_with_parent(ball_collider2, ball_handle2, &mut rigid_body_set);
     collider_set.insert_with_parent(ball_collider, ball_handle, &mut rigid_body_set);
 
     loop {
@@ -80,9 +84,15 @@ async fn main() {
 
         let ball = &rigid_body_set[ball_handle];
         let pos = ball.translation();
-
+        let ball2 = &rigid_body_set[ball_handle2];
+        let pos2 = ball2.translation();
         draw_circle(pos.x * M_TO_PX, pos.y * M_TO_PX, radius_m * M_TO_PX, YELLOW);
-
+        draw_circle(
+            pos2.x * M_TO_PX,
+            pos2.y * M_TO_PX,
+            radius_m * M_TO_PX,
+            BLACK,
+        );
         draw_rectangle(0.0, screen_height() - 40.0, screen_width(), 20.0, BLACK);
 
         next_frame().await;
